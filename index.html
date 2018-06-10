@@ -1,0 +1,403 @@
+<!--
+created by heracl.es for OCC
+3840x1080 → 1280x360
+
+todo:
+
+
+- separate load and display
+- cache some english results
+- alternate between Greek and English / counter & modulo
+- fluid text size
+- offline jquery
+
+
+https://www.mediawiki.org/wiki/API:Tutorial
+https://en.wikipedia.org/w/api.php?api.php?action=parse&prop=text&section=0&format=json&page=Digital_art&callback=?
+http://en.wikipedia.org/w/api.php?action=parse&section=0&prop=text&format=json&page=Digital_art
+
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Hybrids: On the borderline between Art and Technology</title>	
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+	html {
+		font-size: 2.5vh;
+	}
+
+	@font-face {
+		font-family: Onassis;
+		src: url('../fonts/Onassis.ttf');
+	}
+
+	@font-face {
+		font-family: OnassisPunct;
+		src: url('../fonts/Onassis_Punc_bold.ttf');
+	}
+
+	@font-face {
+		font-family: Dotmatrix;
+		src: url('../fonts/5by7.ttf');
+	}
+
+	*, *:before, *:after {
+		box-sizing: border-box;
+	}
+
+	body {
+		height: 100vh;
+		width: 100vw;
+		margin: 0;
+		padding: 0;
+		overflow: hidden;
+		
+		background-color: #000;
+		color: #fff;
+		cursor: none;
+		font-family: "Onassis", sans-serif;
+		font-size: 1.5rem;
+		line-height: 1.5;
+		text-align: center;
+
+		border: 1px solid transparent;
+	}
+
+	a {
+		color: pink;
+	}
+
+	#entry {
+		position: relative;
+		top: 50vh;
+		-webkit-transform: translateY(-50%) rotate(-0.5deg);
+		transform        : translateY(-50%) rotate(-0.5deg);
+
+		margin: 0 auto;
+		max-height: calc(100vh - 8rem);
+		max-width: 70vw;
+
+		background: none;
+		text-align: left;
+		opacity: 0.9;
+	}
+
+	#entry p {
+		line-height: 1.7;
+	}
+
+	#title, #meta {
+		-webkit-transform-origin: bottom left;
+		transform-origin        : bottom left;
+	}
+
+	#title {
+		position: absolute;
+		top:  50vh;
+		left: 12vw;
+
+		-webkit-transform: rotate(-91deg);
+		transform        : rotate(-91deg);
+	}
+
+	#meta {
+		position: absolute;
+		bottom: 1rem;
+		left: 92vw;
+
+		text-align: left;
+		white-space: nowrap;
+
+		-webkit-transform: rotate(-90deg);
+		transform        : rotate(-90deg);
+	}
+
+	h1, #meta div {
+
+		background: -webkit-linear-gradient(0, #ff077f, #ff2722);
+		background:         linear-gradient(0, #ff077f, #ff2722);
+		-webkit-background-clip: text;
+		background-clip        : text;
+		font-family: "OnassisPunc", sans-serif;
+		font-weight: normal;
+		line-height: 1;
+		-webkit-text-fill-color: transparent;
+		text-fill-color        : transparent;
+
+		mix-blend-mode: difference;
+	}
+
+	h1 {
+		margin: 0;
+		font-size: 5rem;
+	}
+
+	#thumbs {
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+
+		width: 100vw;
+		height: 100vh;
+
+		-webkit-transition: opacity 1s;
+		transition        : opacity 1s;
+	}
+
+	.thumb {
+		position: absolute;
+
+		width: 30vh;
+
+		text-align: left;
+		font-size: 1rem;
+		opacity: 0.2;
+
+		-webkit-transform: rotate(1deg);
+		transform        : rotate(1deg);
+
+		mix-blend-mode: difference;
+	}
+
+	.thumb img {
+		width: 100%;
+		height: auto;
+	}
+
+	#sourcescroll {
+		position: absolute;
+		top: 2rem;
+		left: 0;
+	}
+	
+	#quotescroll {
+		position: absolute;
+		bottom: 1.5rem;
+		left: 0;
+	}
+
+	marquee {
+		width: 100vw;
+
+		color: cyan;
+		font-family: "Dotmatrix", monospace;
+		font-size: 2rem;
+
+		mix-blend-mode: difference;
+
+
+		-webkit-transform-origin: bottom left;
+		transform-origin        : bottom left;
+
+
+		-webkit-transform: rotate(1.5deg);
+		transform        : rotate(1.5deg);
+	}
+
+	#credits {
+		position: absolute;
+		bottom: 1.1rem;
+		left: 5vw;
+		font-size: 0.8rem;
+		opacity: 0.7;
+	}
+
+	#credits span {
+		display: inline-block;
+		transform: scaleX(-1);
+	}
+</style>
+
+<script src="./scripts/jquery.min.js"></script>
+<script src="./scripts/jquery.csv.min.js"></script>
+
+</head>
+<body>
+	<div id="thumbs"></div>
+	<div id="entry" contenteditable="true" spellcheck="false"></div>
+	<div id="title"><h1>Hybrids</h1></div>
+	<div id="meta"><div></div></div>
+	<marquee id="sourcescroll" scrollamount="2"></marquee>
+	<div id="quotescroll"></div>
+	<div id="credits"><span>©</span> Heracles Papatheodorou, 2016</div>
+</body>
+<script type="text/javascript">
+	jQuery(document).ready(function($){
+		/*--------------------------------------------------------------
+		initialize vars
+		--------------------------------------------------------------*/		
+	
+		var count = 1; // how many times it populated
+		var index = 1; // index for some default term
+		var words = 120; // limit words
+		var delay = 50*1000; // refresh delay in ms
+		var refresh = window.setTimeout( populate, delay ); // periodically refresh
+
+		function new_index() {
+			index = Math.floor(Math.random() * data_cached.length);
+		}
+		/*--------------------------------------------------------------
+		read offline data from csv file
+		--------------------------------------------------------------*/
+		$.ajax({
+			url: './data_cached.csv',
+			async: false,
+			success: function (csvd) {
+				data_cached = $.csv.toObjects(csvd);
+			},
+			dataType: 'text',
+			complete: function () {
+				console.table( data_cached );
+			}
+		});
+
+		/*--------------------------------------------------------------
+		herlper functions
+		--------------------------------------------------------------*/
+		function random_int(min, max) {
+			return Math.floor( Math.random() * ( max - min + 1 ) + min );
+		}
+
+		/*--------------------------------------------------------------
+		Display processes
+		--------------------------------------------------------------*/
+		// get page’s sources code and display scrolling quote
+		$('#sourcescroll').text( document.documentElement.innerHTML ); // keep above AJAX call to avoid injected code
+
+		function quote_scroll() {
+			$('#quotescroll').html( '<marquee scrollamount="4" loop="1">' + data_cached[ index ][ 'quote' ] + ' -- ' + data_cached[ index ][ 'citation' ] + '</marquee>' );
+			$('#quotescroll marquee').on( 'finish', function(){ quote_scroll(); });
+		}
+
+		quote_scroll();
+
+		var tokens = '';
+		function display( blurb, meta ) {	
+			blurb = blurb.split(/\s+/, words ).join(' ') + ' […]';
+			$('#entry').text( blurb );
+
+			/*
+			// animate text
+			tokens = '';
+			$('#entry').text('');
+			// tokens = '<span>' + blurb.split('').join('</span><span>') + '</span>'; // per letter
+			tokens = '<span>' + blurb.split(' ').join('</span> <span>') + '</span>'; // per word
+			$(tokens).hide().appendTo('#entry').each(function (i) {
+				$(this).delay(80 * i).css({
+					display: 'inline',
+					opacity: 0
+				}).animate({
+					opacity: 1
+				}, 100);
+			});
+			*/
+
+			$('#meta div').html( meta );
+		}
+
+
+		/*--------------------------------------------------------------
+		Populate from Wikipedia API, or offline data
+		--------------------------------------------------------------*/
+		var blurb = $('<div></div>');
+		function populate() {
+			count++;
+			var lang = ( count%2 == 0? 'en' : 'el' );
+			// select a term
+			new_index();
+			var term = data_cached[ index ][ 'term_' + lang ];
+
+			$.ajax({
+				type: 'GET',
+				url: 'https://' + lang + '.wikipedia.org/w/api.php?action=parse&curtimestamp=1&format=json&page=' + term + '&prop=text&callback=?',
+				contentType: 'application/json; charset=utf-8',
+				async: true,
+				dataType: 'json',
+				timeout: 5000,
+				success: function (data, textStatus, jqXHR) {
+					if ( typeof data.error == 'undefined' ) {
+						var markup = data.parse.text['*'];
+						blurb.html(markup);
+						blurb.find('a').each(function() { $(this).replaceWith($(this).html()); }); // remove links as they will not work
+						blurb.find('sup').remove(); // remove references
+						blurb.find('.mw-ext-cite-error').remove(); // remove cite error
+						blurb = $(blurb).find('p').slice(0,2); // only keep text paragraphs
+
+						//  display entry thumbnails
+						$('#thumbs').css( { 'visibility': 'hidden', 'opacity': 0 } );
+
+						var thumbs = $('#thumbs').html( markup );
+						thumbs = $('#thumbs').find( '.thumb' );
+						thumbs.find('a').each(function() { $(this).replaceWith( $(this).html() ); });
+						thumbs.find('img').each(function() { $(this).attr( 'src', 'http://' + $(this).attr( 'src' ) ); });
+						$('#thumbs').html( thumbs );
+
+						$(window).on("load", function() {
+							$('.thumb').each(function(){
+								$(this).css({
+									'top' : random_int( 0, $(window).height() - $(this).height() ),
+									'left' : random_int( 0, $(window).width() - $(this).width() )
+								});
+							});
+							$('#thumbs').css( { 'visibility': 'visible', 'opacity': 1 } );
+						});
+
+						$('.thumbinner').css({ 'width' : 'auto' });
+						
+
+						// get metadata, such as last revision timestamp
+						/*
+						$.ajax({
+							url: 'https://' + lang + '.wikipedia.org/w/api.php?action=query&format=json&titles=' + term + '&prop=revisions&rvlimit=1&rvprop=timestamp%7Cuser&callback=?',
+							async: true,
+							dataType: 'json',
+							timeout: 2000,
+							success: function (revisions) {
+								var timestamp = revisions.query.pages[ Object.keys( revisions.query.pages )[0] ].revisions[0].timestamp;
+								meta = timestamp + '<br/>en.wikipedia.org/' + term;
+							},
+							error: function (errorMessage) {
+								meta = 'en.wikipedia.org/' + term;
+								display( blurb.text(), meta );
+							}
+						});
+						*/
+
+						meta = data.curtimestamp + '<br/>en.wikipedia.org/' + term;
+
+						display( blurb.text(), meta );
+
+						// display the details
+						// display( blurb.text(), meta );
+					} else { // missing entry
+						$('#thumbs').css( { 'visibility': 'hidden', 'opacity': 0 } );
+						if ( data_cached[ index ][ 'entry_' + lang ] != '' ) { // skip empty (untranslated) entries
+							meta = 'MISSING TERM<br>add to Wikipedia:<br>' + data_cached[ index ][ 'term_' + lang ];
+							display( data_cached[ index ][ 'entry_' + lang ], meta );
+						} else {
+							count = count+2;
+							populate();
+						}
+					}
+				},
+				error: function (errorMessage) { // offline, or other error
+					$('#thumbs').css( { 'visibility': 'hidden', 'opacity': 0 } );
+					if ( data_cached[ index ][ 'entry_' + lang ] != '' ) { // skip empty (untranslated) entries
+						meta = 'OFFLINE<br>via Wikipedia:<br>' + data_cached[ index ][ 'term_' + lang ];
+						display( data_cached[ index ][ 'entry_' + lang ], meta );
+					} else {
+						count = count+2;
+						populate();
+					}
+				}
+			});
+		}
+
+		populate();
+	});
+</script>
+<!-- <script type="text/javascript" src="http://localhost/live.js"></script> -->
+</html>
